@@ -22,7 +22,9 @@ log() {
 }
 
 latest_ckpt() {
-  find "$RUN_DIR" -maxdepth 1 -name '*.ckpt' -printf '%T@ %p\n' 2>/dev/null | sort -n | tail -n1 | cut -d' ' -f2-
+  find "$RUN_DIR" -maxdepth 1 -name '*.ckpt' -printf '%T@ %p\n' 2>/dev/null \
+    | grep -E '/(last|epoch=[0-9]+-step=[0-9]+(-v[0-9]+)?)\.ckpt$' \
+    | sort -n | tail -n1 | cut -d' ' -f2-
 }
 
 release_exists() {
@@ -45,7 +47,7 @@ upload_checkpoint() {
   local unique_asset="$RUN_DIR/${ASSET_PREFIX}-${checkpoint_name}.tar.gz"
   local latest_asset="$RUN_DIR/${ASSET_PREFIX}-latest.tar.gz"
 
-  python scripts/package_and_upload_github_release.py "$RUN_DIR" --repo "$REPO" --tag "$TAG" --release-name "$TAG" --asset-name "$(basename "$unique_asset")" --notes 'CDVAE MP-20 model trained on A100.' >>"$LOG_FILE" 2>&1
+  python scripts/package_and_upload_github_release.py "$RUN_DIR" --repo "$REPO" --tag "$TAG" --release-name "$TAG" --asset-name "$(basename "$unique_asset")" --checkpoint "$checkpoint_path" --notes 'CDVAE MP-20 model trained on A100.' >>"$LOG_FILE" 2>&1
   cp -f "$unique_asset" "$latest_asset"
 
   ensure_release

@@ -229,7 +229,7 @@ class CDVAE(BaseModule):
                 lengths = gt_lengths
                 angles = gt_angles
         else:
-            num_atoms = self.predict_num_atoms(z).argmax(dim=-1)
+            num_atoms = self.predict_num_atoms(z).argmax(dim=-1).clamp_min(1)
             lengths_and_angles, lengths, angles = (
                 self.predict_lattice(z, num_atoms))
             composition_per_atom = self.predict_composition(z, num_atoms)
@@ -436,10 +436,22 @@ class CDVAE(BaseModule):
         assert composition_prob.size(0) == num_atoms.sum() == batch.size(0)
         composition_prob = scatter(
             composition_prob, index=batch, dim=0, reduce='mean')
+        composition_prob = torch.nan_to_num(
+            composition_prob,
+            nan=0.0,
+            posinf=0.0,
+            neginf=0.0,
+        )
 
         all_sampled_comp = []
 
         for comp_prob, num_atom in zip(list(composition_prob), list(num_atoms)):
+            comp_prob = comp_prob.clamp_min(0.)
+            if comp_prob.sum() <= 0:
+                comp_prob = torch.ones_like(comp_prob) / comp_prob.numel()
+            else:
+                comp_prob = comp_prob / comp_prob.sum()
+
             comp_num = torch.round(comp_prob * num_atom)
             atom_type = torch.nonzero(comp_num, as_tuple=True)[0] + 1
             atom_num = comp_num[atom_type - 1].long()
@@ -453,6 +465,9 @@ class CDVAE(BaseModule):
                 left_comp_prob = comp_prob - comp_num.float() / num_atom
 
                 left_comp_prob[left_comp_prob < 0.] = 0.
+                if left_comp_prob.sum() <= 0:
+                    left_comp_prob = comp_prob
+                left_comp_prob = left_comp_prob / left_comp_prob.sum()
                 left_comp = torch.multinomial(
                     left_comp_prob, num_samples=left_atom_num, replacement=True)
                 # convert to atomic number

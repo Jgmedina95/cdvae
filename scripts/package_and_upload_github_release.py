@@ -31,6 +31,12 @@ def parse_args() -> argparse.Namespace:
         help="Optional asset filename. Defaults to <run_dir_name>.tar.gz.",
     )
     parser.add_argument(
+        "--checkpoint",
+        type=Path,
+        default=None,
+        help="Optional explicit checkpoint path to package.",
+    )
+    parser.add_argument(
         "--output-dir",
         type=Path,
         default=None,
@@ -44,22 +50,37 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def find_checkpoint(run_dir: Path) -> Path:
+def find_checkpoint(run_dir: Path, asset_name: str | None = None) -> Path:
+    if asset_name is not None and asset_name.endswith(("-last.tar.gz", "-latest.tar.gz")):
+        last_ckpt = run_dir / "last.ckpt"
+        if last_ckpt.exists():
+            return last_ckpt
+
     checkpoints = sorted(run_dir.glob("*.ckpt"))
     if not checkpoints:
         raise FileNotFoundError(f"No checkpoint files found in {run_dir}")
 
     def checkpoint_sort_key(path: Path) -> tuple[int, int, float]:
-        epoch_match = re.search(r"epoch=(\d+)", path.name)
-        step_match = re.search(r"step=(\d+)", path.name)
-        epoch = int(epoch_match.group(1)) if epoch_match else -1
-        step = int(step_match.group(1)) if step_match else -1
+        match = re.fullmatch(r"epoch=(\d+)-step=(\d+)(?:-v\d+)?\.ckpt", path.name)
+        if match is None:
+            return (-1, -1, path.stat().st_mtime)
+        epoch = int(match.group(1))
+        step = int(match.group(2))
         return (epoch, step, path.stat().st_mtime)
 
-    return max(checkpoints, key=checkpoint_sort_key)
+    best_checkpoint = max(checkpoints, key=checkpoint_sort_key)
+    sort_key = checkpoint_sort_key(best_checkpoint)
+    if sort_key[:2] == (-1, -1):
+        raise FileNotFoundError(f"No epoch checkpoints found in {run_dir}")
+    return best_checkpoint
 
 
-def build_asset(run_dir: Path, output_dir: Path | None, asset_name: str | None) -> Path:
+def build_asset(
+    run_dir: Path,
+    output_dir: Path | None,
+    asset_name: str | None,
+    checkpoint: Path | None,
+) -> Path:
     run_dir = run_dir.resolve()
     output_dir = (output_dir or run_dir).resolve()
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -67,7 +88,11 @@ def build_asset(run_dir: Path, output_dir: Path | None, asset_name: str | None) 
     asset_name = asset_name or f"{run_dir.name}.tar.gz"
     asset_path = output_dir / asset_name
 
-    checkpoint_path = find_checkpoint(run_dir)
+    if checkpoint is not None:
+        checkpoint_path = checkpoint.resolve()
+    else:
+        checkpoint_path = find_checkpoint(run_dir, asset_name=asset_name)
+
     files_to_include = [
         checkpoint_path,
         run_dir / "hparams.yaml",
@@ -182,7 +207,7 @@ def upload_asset(upload_url: str, asset_path: Path, token: str) -> dict:
 
 def main() -> int:
     args = parse_args()
-    asset_path = build_asset(args.run_dir, args.output_dir, args.asset_name)
+    asset_path = build_asset(args.run_dir, args.output_dir, args.asset_name, args.checkpoint)
 
     print(json.dumps({"asset_path": str(asset_path)}, indent=2))
 
