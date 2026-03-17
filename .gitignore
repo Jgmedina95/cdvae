@@ -112,6 +112,7 @@ celerybeat.pid
 # Environments
 .env
 .venv
+.venv-local/
 env/
 venv/
 ENV/
@@ -216,3 +217,7 @@ fabric.properties
 
 # .DS_Store
 .DS_Store
+
+# Local training outputs
+hydra_runs/
+wandb/

@@ -665,14 +665,20 @@ def preprocess(input_file, num_workers, niggli, primitive, graph_method,
         result_dict.update(properties)
         return result_dict
 
-    unordered_results = p_umap(
-        process_one,
-        [df.iloc[idx] for idx in range(len(df))],
-        [niggli] * len(df),
-        [primitive] * len(df),
-        [graph_method] * len(df),
-        [prop_list] * len(df),
-        num_cpus=num_workers)
+    if num_workers is None or int(num_workers) <= 1:
+        unordered_results = [
+            process_one(df.iloc[idx], niggli, primitive, graph_method, prop_list)
+            for idx in range(len(df))
+        ]
+    else:
+        unordered_results = p_umap(
+            process_one,
+            [df.iloc[idx] for idx in range(len(df))],
+            [niggli] * len(df),
+            [primitive] * len(df),
+            [graph_method] * len(df),
+            [prop_list] * len(df),
+            num_cpus=num_workers)
 
     mpid_to_results = {result['mp_id']: result for result in unordered_results}
     ordered_results = [mpid_to_results[df.iloc[idx]['material_id']]
@@ -700,15 +706,10 @@ def preprocess_tensors(crystal_array_list, niggli, primitive, graph_method):
         }
         return result_dict
 
-    unordered_results = p_umap(
-        process_one,
-        list(range(len(crystal_array_list))),
-        crystal_array_list,
-        [niggli] * len(crystal_array_list),
-        [primitive] * len(crystal_array_list),
-        [graph_method] * len(crystal_array_list),
-        num_cpus=30,
-    )
+    unordered_results = [
+        process_one(batch_idx, crystal_array, niggli, primitive, graph_method)
+        for batch_idx, crystal_array in enumerate(crystal_array_list)
+    ]
     ordered_results = list(
         sorted(unordered_results, key=lambda x: x['batch_idx']))
     return ordered_results

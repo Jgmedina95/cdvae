@@ -3,8 +3,8 @@
 
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 from torch_scatter import scatter
-from torch_geometric.nn.acts import swish
 from torch_geometric.nn.inits import glorot_orthogonal
 from torch_geometric.nn.models.dimenet import (
     BesselBasisLayer,
@@ -20,6 +20,12 @@ from cdvae.common.data_utils import (
     radius_graph_pbc_wrapper,
 )
 from cdvae.pl_modules.gemnet.gemnet import GemNetT
+
+try:
+    from torch_geometric.nn.acts import swish
+except ImportError:
+    def swish(x):
+        return F.silu(x)
 
 try:
     import sympy as sym

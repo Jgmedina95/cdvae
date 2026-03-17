@@ -3,8 +3,9 @@ from pathlib import Path
 from typing import Optional
 
 import dotenv
-import pytorch_lightning as pl
 from omegaconf import DictConfig, OmegaConf
+
+from cdvae.common.compat import pl
 
 
 def get_env(env_name: str, default: Optional[str] = None) -> str:
@@ -77,21 +78,33 @@ def log_hyperparameters(
         p.numel() for p in model.parameters() if not p.requires_grad
     )
 
+    logger = trainer.logger
+    if logger is None:
+        return
+
     # send hparams to all loggers
-    trainer.logger.log_hyperparams(hparams)
+    logger.log_hyperparams(hparams)
 
     # disable logging any more hyperparameters for all loggers
     # (this is just a trick to prevent trainer from logging hparams of model, since we already did that above)
-    trainer.logger.log_hyperparams = lambda params: None
+    logger.log_hyperparams = lambda params: None
 
 
 # Load environment variables
 load_envs()
 
+DEFAULT_PROJECT_ROOT = Path(__file__).resolve().parents[2]
+os.environ.setdefault("PROJECT_ROOT", str(DEFAULT_PROJECT_ROOT))
+os.environ.setdefault("HYDRA_JOBS", str(DEFAULT_PROJECT_ROOT / "hydra_runs"))
+os.environ.setdefault("WABDB_DIR", str(DEFAULT_PROJECT_ROOT / "wandb_runs"))
+
+(Path(os.environ["HYDRA_JOBS"]).expanduser()).mkdir(parents=True, exist_ok=True)
+(Path(os.environ["WABDB_DIR"]).expanduser()).mkdir(parents=True, exist_ok=True)
+
 # Set the cwd to the project root
-PROJECT_ROOT: Path = Path(get_env("PROJECT_ROOT"))
+PROJECT_ROOT: Path = Path(get_env("PROJECT_ROOT")).expanduser().resolve()
 assert (
     PROJECT_ROOT.exists()
-), "You must configure the PROJECT_ROOT environment variable in a .env file!"
+), "The resolved PROJECT_ROOT path does not exist."
 
 os.chdir(PROJECT_ROOT)

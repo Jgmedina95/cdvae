@@ -4,12 +4,12 @@ import hydra
 import numpy as np
 import omegaconf
 import torch
-import pytorch_lightning as pl
 import torch.nn as nn
 from torch.nn import functional as F
 from torch_scatter import scatter
 from tqdm import tqdm
 
+from cdvae.common.compat import pl
 from cdvae.common.utils import PROJECT_ROOT
 from cdvae.common.data_utils import (
     EPSILON, cart_to_frac_coords, mard, lengths_angles_to_volume,
@@ -632,7 +632,7 @@ class CDVAE(BaseModule):
         return log_dict, loss
 
 
-@hydra.main(config_path=str(PROJECT_ROOT / "conf"), config_name="default")
+@hydra.main(version_base=None, config_path=str(PROJECT_ROOT / "conf"), config_name="default")
 def main(cfg: omegaconf.DictConfig):
     model: pl.LightningModule = hydra.utils.instantiate(
         cfg.model,

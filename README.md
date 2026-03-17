@@ -33,6 +33,42 @@ It has several main functionalities:
 
 The easiest way to install prerequisites is via [conda](https://conda.io/docs/index.html).
 
+### Modern local setup
+
+The original environment files target Python 3.8, PyTorch 1.8, and older PyG/Lightning APIs. For current machines, the repo now also supports a modern local path with current Hydra and Lightning compatibility.
+
+Recommended baseline:
+
+- Python 3.10 to 3.12
+- CPU training for smoke tests, or Linux + NVIDIA GPU for full training
+- `uv` or `pip` in a virtual environment
+
+CPU example:
+
+```bash
+cd cdvae
+uv venv --python 3.11
+source .venv/bin/activate
+uv pip install -r requirements/local-cpu.txt
+uv pip install -e .
+```
+
+CUDA 12.1 example:
+
+```bash
+cd cdvae
+uv venv --python 3.11
+source .venv/bin/activate
+uv pip install -r requirements/local-cu121.txt
+uv pip install -e .
+```
+
+Notes:
+
+- On macOS or other platforms without matching PyG wheels, `torch-scatter` and `torch-sparse` may need to compile from source.
+- The code no longer requires a handwritten `.env` file for basic local use. By default it will use the repo root and create `hydra_runs/` and `wandb_runs/` inside the project.
+- If you want to keep using the original conda setup, the old `env.yml` files are still present.
+
 ### GPU machines
 
 Run the following command to install the environment:
@@ -86,6 +122,33 @@ To train a CDVAE, run the following command:
 
 ```
 python cdvae/run.py data=perov expname=perov
+```
+
+For a modern local smoke test on MP-20, run:
+
+```bash
+bash scripts/train_local.sh train.pl_trainer.fast_dev_run=True
+```
+
+For a short CPU run that is still closer to real training, run:
+
+```bash
+bash scripts/train_local.sh \
+  train.pl_trainer.accelerator=cpu \
+  train.pl_trainer.devices=1 \
+  data.datamodule.batch_size.train=8 \
+  data.datamodule.batch_size.val=8 \
+  data.datamodule.batch_size.test=8 \
+  data.preprocess_workers=0 \
+  logging.wandb.mode=offline
+```
+
+On GPU, replace the trainer overrides with values such as:
+
+```bash
+bash scripts/train_local.sh \
+  train.pl_trainer.accelerator=gpu \
+  train.pl_trainer.devices=1
 ```
 
 To use other datasets, use `data=carbon` and `data=mp_20` instead. CDVAE uses [hydra](https://hydra.cc) to configure hyperparameters, and users can modify them with the command line or configure files in `conf/` folder.

@@ -123,7 +123,7 @@ class TensorCrystDataset(Dataset):
         return f"TensorCrystDataset(len: {len(self.cached_data)})"
 
 
-@hydra.main(config_path=str(PROJECT_ROOT / "conf"), config_name="default")
+@hydra.main(version_base=None, config_path=str(PROJECT_ROOT / "conf"), config_name="default")
 def main(cfg: omegaconf.DictConfig):
     from torch_geometric.data import Batch
     from cdvae.common.data_utils import get_scaler_from_data_list

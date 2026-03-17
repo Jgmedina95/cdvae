@@ -5,12 +5,11 @@ from pathlib import Path
 import hydra
 import numpy as np
 import omegaconf
-import pytorch_lightning as pl
 import torch
 from omegaconf import DictConfig
 from torch.utils.data import Dataset
-from torch_geometric.data import DataLoader
 
+from cdvae.common.compat import PYGDataLoader, pl
 from cdvae.common.utils import PROJECT_ROOT
 from cdvae.common.data_utils import get_scaler_from_data_list
 
@@ -97,8 +96,8 @@ class CrystDataModule(pl.LightningDataModule):
                 test_dataset.lattice_scaler = self.lattice_scaler
                 test_dataset.scaler = self.scaler
 
-    def train_dataloader(self) -> DataLoader:
-        return DataLoader(
+    def train_dataloader(self) -> PYGDataLoader:
+        return PYGDataLoader(
             self.train_dataset,
             shuffle=True,
             batch_size=self.batch_size.train,
@@ -106,9 +105,9 @@ class CrystDataModule(pl.LightningDataModule):
             worker_init_fn=worker_init_fn,
         )
 
-    def val_dataloader(self) -> Sequence[DataLoader]:
+    def val_dataloader(self) -> Sequence[PYGDataLoader]:
         return [
-            DataLoader(
+            PYGDataLoader(
                 dataset,
                 shuffle=False,
                 batch_size=self.batch_size.val,
@@ -118,9 +117,9 @@ class CrystDataModule(pl.LightningDataModule):
             for dataset in self.val_datasets
         ]
 
-    def test_dataloader(self) -> Sequence[DataLoader]:
+    def test_dataloader(self) -> Sequence[PYGDataLoader]:
         return [
-            DataLoader(
+            PYGDataLoader(
                 dataset,
                 shuffle=False,
                 batch_size=self.batch_size.test,
@@ -139,7 +138,7 @@ class CrystDataModule(pl.LightningDataModule):
         )
 
 
-@hydra.main(config_path=str(PROJECT_ROOT / "conf"), config_name="default")
+@hydra.main(version_base=None, config_path=str(PROJECT_ROOT / "conf"), config_name="default")
 def main(cfg: omegaconf.DictConfig):
     datamodule: pl.LightningDataModule = hydra.utils.instantiate(
         cfg.data.datamodule, _recursive_=False
