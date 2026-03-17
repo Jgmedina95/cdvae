@@ -1,5 +1,6 @@
 import itertools
 import numpy as np
+import re
 import torch
 import hydra
 
@@ -62,12 +63,35 @@ def load_model(model_path, load_data=False, testing=True):
             logging=cfg.logging,
             _recursive_=False,
         )
-        ckpts = list(model_path.glob('*.ckpt'))
-        if len(ckpts) > 0:
-            ckpt_epochs = np.array(
-                [int(ckpt.parts[-1].split('-')[0].split('=')[1]) for ckpt in ckpts])
-            ckpt = str(ckpts[ckpt_epochs.argsort()[-1]])
-        model = model.load_from_checkpoint(ckpt)
+        ckpt = None
+        last_ckpt = model_path / 'last.ckpt'
+        if last_ckpt.exists():
+            ckpt = str(last_ckpt)
+        else:
+            epoch_ckpts = []
+            for candidate in model_path.glob('*.ckpt'):
+                epoch_match = re.search(r'epoch=(\d+)', candidate.name)
+                step_match = re.search(r'step=(\d+)', candidate.name)
+                if epoch_match is None:
+                    continue
+                epoch = int(epoch_match.group(1))
+                step = int(step_match.group(1)) if step_match is not None else -1
+                epoch_ckpts.append((epoch, step, candidate))
+
+            if epoch_ckpts:
+                _, _, newest_ckpt = max(epoch_ckpts, key=lambda item: (item[0], item[1]))
+                ckpt = str(newest_ckpt)
+
+        if ckpt is None:
+            raise FileNotFoundError(f'No checkpoint files found in {model_path}')
+
+        model = type(model).load_from_checkpoint(
+            ckpt,
+            optim=cfg.optim,
+            data=cfg.data,
+            logging=cfg.logging,
+            _recursive_=False,
+        )
         model.lattice_scaler = torch.load(model_path / 'lattice_scaler.pt')
         model.scaler = torch.load(model_path / 'prop_scaler.pt')
 
