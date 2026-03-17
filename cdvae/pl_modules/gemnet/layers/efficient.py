@@ -148,6 +148,9 @@ class EfficientInteractionBilinear(torch.nn.Module):
         # (nEdges, emb_size_interm, num_spherical), (nEdges, num_spherical, Kmax)
         nEdges = rbf_W1.shape[0]
 
+        if id_ragged_idx.numel() == 0 or id_reduce.numel() == 0:
+            return m.new_zeros(nEdges, self.units_out)
+
         # Create (zero-padded) dense matrix of the neighboring edge embeddings.
         Kmax = torch.max(
             torch.max(id_ragged_idx) + 1,

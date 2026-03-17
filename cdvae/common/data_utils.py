@@ -1,9 +1,13 @@
+import hashlib
+import itertools
+import pickle
+from pathlib import Path
+
 import numpy as np
 import pandas as pd
 import networkx as nx
 import torch
 import copy
-import itertools
 
 from pymatgen.core.structure import Structure
 from pymatgen.core.lattice import Lattice
@@ -110,8 +114,12 @@ def build_crystal_graph(crystal, graph_method='crystalnn'):
     """
 
     if graph_method == 'crystalnn':
-        crystal_graph = StructureGraph.with_local_env_strategy(
-            crystal, CrystalNN)
+        if hasattr(StructureGraph, 'from_local_env_strategy'):
+            crystal_graph = StructureGraph.from_local_env_strategy(
+                crystal, CrystalNN)
+        else:
+            crystal_graph = StructureGraph.with_local_env_strategy(
+                crystal, CrystalNN)
     elif graph_method == 'none':
         pass
     else:
@@ -609,17 +617,17 @@ class StandardScalerTorch(object):
         self.stds = stds
 
     def fit(self, X):
-        X = torch.tensor(X, dtype=torch.float)
+        X = torch.as_tensor(X, dtype=torch.float)
         self.means = torch.mean(X, dim=0)
         # https://github.com/pytorch/pytorch/issues/29372
         self.stds = torch.std(X, dim=0, unbiased=False) + EPSILON
 
     def transform(self, X):
-        X = torch.tensor(X, dtype=torch.float)
+        X = torch.as_tensor(X, dtype=torch.float)
         return (X - self.means) / self.stds
 
     def inverse_transform(self, X):
-        X = torch.tensor(X, dtype=torch.float)
+        X = torch.as_tensor(X, dtype=torch.float)
         return X * self.stds + self.means
 
     def match_device(self, tensor):
@@ -641,14 +649,35 @@ class StandardScalerTorch(object):
 
 
 def get_scaler_from_data_list(data_list, key):
-    targets = torch.tensor([d[key] for d in data_list])
+    targets = torch.as_tensor(np.asarray([d[key] for d in data_list]), dtype=torch.float)
     scaler = StandardScalerTorch()
     scaler.fit(targets)
     return scaler
 
 
+def _preprocess_cache_path(input_file, niggli, primitive, graph_method, prop_list):
+    input_path = Path(input_file)
+    cache_key = {
+        'cache_version': 1,
+        'source': str(input_path.resolve()),
+        'mtime_ns': input_path.stat().st_mtime_ns,
+        'niggli': bool(niggli),
+        'primitive': bool(primitive),
+        'graph_method': graph_method,
+        'prop_list': tuple(prop_list),
+    }
+    digest = hashlib.sha256(repr(cache_key).encode('utf-8')).hexdigest()[:16]
+    return input_path.with_suffix(f'{input_path.suffix}.cache.{digest}.pkl')
+
+
 def preprocess(input_file, num_workers, niggli, primitive, graph_method,
                prop_list):
+    cache_path = _preprocess_cache_path(
+        input_file, niggli, primitive, graph_method, prop_list)
+    if cache_path.exists():
+        with cache_path.open('rb') as handle:
+            return pickle.load(handle)
+
     df = pd.read_csv(input_file)
 
     def process_one(row, niggli, primitive, graph_method, prop_list):
@@ -683,6 +712,9 @@ def preprocess(input_file, num_workers, niggli, primitive, graph_method,
     mpid_to_results = {result['mp_id']: result for result in unordered_results}
     ordered_results = [mpid_to_results[df.iloc[idx]['material_id']]
                        for idx in range(len(df))]
+
+    with cache_path.open('wb') as handle:
+        pickle.dump(ordered_results, handle, protocol=pickle.HIGHEST_PROTOCOL)
 
     return ordered_results
 

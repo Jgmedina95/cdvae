@@ -67,6 +67,7 @@ Notes:
 
 - On macOS or other platforms without matching PyG wheels, `torch-scatter` and `torch-sparse` may need to compile from source.
 - The code no longer requires a handwritten `.env` file for basic local use. By default it will use the repo root and create `hydra_runs/` and `wandb_runs/` inside the project.
+- Dataset preprocessing is cached automatically next to each CSV split after the first run, which makes repeated training launches much faster.
 - If you want to keep using the original conda setup, the old `env.yml` files are still present.
 
 ### GPU machines
@@ -128,6 +129,21 @@ For a modern local smoke test on MP-20, run:
 
 ```bash
 bash scripts/train_local.sh train.pl_trainer.fast_dev_run=True
+```
+
+`fast_dev_run=True` intentionally forces CPU in this repo so debugging stays deterministic. To do a short GPU smoke test instead, use explicit trainer limits:
+
+```bash
+bash scripts/train_local.sh \
+  data=mp_20_debug \
+  logging.val_check_interval=1 \
+  train.pl_trainer.accelerator=gpu \
+  train.pl_trainer.devices=1 \
+  train.pl_trainer.max_epochs=1 \
+  train.pl_trainer.num_sanity_val_steps=0 \
+  +train.pl_trainer.limit_train_batches=1 \
+  +train.pl_trainer.limit_val_batches=1 \
+  +train.pl_trainer.limit_test_batches=1
 ```
 
 For a short CPU run that is still closer to real training, run:

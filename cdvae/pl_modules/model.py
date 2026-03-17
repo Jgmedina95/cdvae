@@ -41,7 +41,20 @@ class BaseModule(pl.LightningModule):
         scheduler = hydra.utils.instantiate(
             self.hparams.optim.lr_scheduler, optimizer=opt
         )
-        return {"optimizer": opt, "lr_scheduler": scheduler, "monitor": "val_loss"}
+        scheduler_frequency = 1
+        if hasattr(self.hparams, "logging") and "val_check_interval" in self.hparams.logging:
+            scheduler_frequency = max(1, int(self.hparams.logging.val_check_interval))
+
+        return {
+            "optimizer": opt,
+            "lr_scheduler": {
+                "scheduler": scheduler,
+                "monitor": "val_loss",
+                "interval": "epoch",
+                "frequency": scheduler_frequency,
+                "strict": False,
+            },
+        }
 
 
 class CrystGNN_Supervise(BaseModule):
@@ -331,10 +344,24 @@ class CDVAE(BaseModule):
 
         # add noise to atom types and sample atom types.
         pred_composition_probs = F.softmax(
-            pred_composition_per_atom.detach(), dim=-1)
+            pred_composition_per_atom.detach().float(), dim=-1)
+        pred_composition_probs = torch.nan_to_num(
+            pred_composition_probs,
+            nan=0.0,
+            posinf=0.0,
+            neginf=0.0,
+        )
         atom_type_probs = (
-            F.one_hot(batch.atom_types - 1, num_classes=MAX_ATOMIC_NUM) +
-            pred_composition_probs * used_type_sigmas_per_atom[:, None])
+            F.one_hot(batch.atom_types - 1, num_classes=MAX_ATOMIC_NUM).float() +
+            pred_composition_probs * used_type_sigmas_per_atom[:, None].float())
+        atom_type_probs = torch.nan_to_num(
+            atom_type_probs,
+            nan=0.0,
+            posinf=0.0,
+            neginf=0.0,
+        )
+        atom_type_probs = atom_type_probs.clamp_min(EPSILON)
+        atom_type_probs = atom_type_probs / atom_type_probs.sum(dim=-1, keepdim=True)
         rand_atom_types = torch.multinomial(
             atom_type_probs, num_samples=1).squeeze(1) + 1
 

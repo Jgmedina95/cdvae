@@ -393,7 +393,7 @@ class DimeNetPlusPlusWrap(DimeNetPlusPlus):
         )
 
         a = (pos_ji * pos_kj).sum(dim=-1)
-        b = torch.cross(pos_ji, pos_kj).norm(dim=-1)
+        b = torch.cross(pos_ji, pos_kj, dim=-1).norm(dim=-1)
         angle = torch.atan2(b, a)
 
         rbf = self.rbf(dist)

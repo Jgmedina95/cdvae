@@ -123,18 +123,29 @@ def repeat_blocks(
     assert sizes.dim() == 1
     assert all(sizes >= 0)
 
+    if sizes.numel() == 0:
+        return sizes.new_empty(0)
+
     # Remove 0 sizes
     sizes_nonzero = sizes > 0
     if not torch.all(sizes_nonzero):
-        assert block_inc == 0  # Implementing this is not worth the effort
+        if isinstance(block_inc, torch.Tensor):
+            block_inc = torch.masked_select(block_inc, sizes_nonzero[:-1])
+        else:
+            assert block_inc == 0  # Implementing this is not worth the effort
         sizes = torch.masked_select(sizes, sizes_nonzero)
         if isinstance(repeats, torch.Tensor):
             repeats = torch.masked_select(repeats, sizes_nonzero)
         if isinstance(repeat_inc, torch.Tensor):
             repeat_inc = torch.masked_select(repeat_inc, sizes_nonzero)
 
+    if sizes.numel() == 0:
+        return sizes.new_empty(0)
+
     if isinstance(repeats, torch.Tensor):
         assert all(repeats >= 0)
+        if repeats.numel() == 0 or repeats.sum() == 0:
+            return sizes.new_empty(0)
         insert_dummy = repeats[0] == 0
         if insert_dummy:
             one = sizes.new_ones(1)
@@ -147,6 +158,8 @@ def repeat_blocks(
                 repeat_inc = torch.cat((zero, repeat_inc))
     else:
         assert repeats >= 0
+        if repeats == 0:
+            return sizes.new_empty(0)
         insert_dummy = False
 
     # Get repeats for each group using group lengths/sizes
@@ -156,6 +169,8 @@ def repeat_blocks(
 
     # Get total size of output array, as needed to initialize output indexing array
     N = (sizes * repeats).sum()
+    if N == 0:
+        return sizes.new_empty(0)
 
     # Initialize indexing array with ones as we need to setup incremental indexing
     # within each group when cumulatively summed at the final stage.

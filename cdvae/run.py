@@ -1,6 +1,7 @@
 from pathlib import Path
 from typing import List
 import logging
+import re
 
 import hydra
 import numpy as np
@@ -22,6 +23,29 @@ from cdvae.common.utils import log_hyperparameters, PROJECT_ROOT
 
 
 log = logging.getLogger(__name__)
+
+
+def _select_resume_checkpoint(hydra_dir: Path) -> str | None:
+    last_ckpt = hydra_dir / 'last.ckpt'
+    if last_ckpt.exists():
+        return str(last_ckpt)
+
+    ckpts = list(hydra_dir.glob('*.ckpt'))
+    epoch_ckpts: list[tuple[int, int, Path]] = []
+    for ckpt in ckpts:
+        epoch_match = re.search(r'epoch=(\d+)', ckpt.name)
+        step_match = re.search(r'step=(\d+)', ckpt.name)
+        if epoch_match is None:
+            continue
+        epoch = int(epoch_match.group(1))
+        step = int(step_match.group(1)) if step_match is not None else -1
+        epoch_ckpts.append((epoch, step, ckpt))
+
+    if not epoch_ckpts:
+        return None
+
+    _, _, newest_ckpt = max(epoch_ckpts, key=lambda item: (item[0], item[1]))
+    return str(newest_ckpt)
 
 
 def _normalize_trainer_kwargs(cfg: DictConfig, ckpt_path: str | None) -> dict:
@@ -95,6 +119,7 @@ def build_callbacks(cfg: DictConfig) -> List[Callback]:
                 monitor=cfg.train.monitor_metric,
                 mode=cfg.train.monitor_metric_mode,
                 save_top_k=cfg.train.model_checkpoints.save_top_k,
+                save_last=cfg.train.model_checkpoints.save_last,
                 verbose=cfg.train.model_checkpoints.verbose,
             )
         )
@@ -110,6 +135,9 @@ def run(cfg: DictConfig) -> None:
     """
     if cfg.train.deterministic:
         seed_everything(cfg.train.random_seed)
+
+    if torch.cuda.is_available():
+        torch.set_float32_matmul_precision("high")
 
     if cfg.train.pl_trainer.fast_dev_run:
         log.info(
@@ -178,13 +206,9 @@ def run(cfg: DictConfig) -> None:
     (hydra_dir / "hparams.yaml").write_text(yaml_conf)
 
     # Load checkpoint (if exist)
-    ckpts = list(hydra_dir.glob('*.ckpt'))
-    if len(ckpts) > 0:
-        ckpt_epochs = np.array([int(ckpt.parts[-1].split('-')[0].split('=')[1]) for ckpt in ckpts])
-        ckpt = str(ckpts[ckpt_epochs.argsort()[-1]])
+    ckpt = _select_resume_checkpoint(hydra_dir)
+    if ckpt is not None:
         log.info(f"Found checkpoint: {ckpt}")
-    else:
-        ckpt = None
     
     trainer_kwargs = _normalize_trainer_kwargs(cfg, ckpt)
 
